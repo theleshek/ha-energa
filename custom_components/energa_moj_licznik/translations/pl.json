@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energa Mój Licznik",
+        "description": "Dane logowania do mojlicznik.energa-operator.pl",
+        "data": {
+          "username": "Login",
+          "password": "Hasło"
+        }
+      },
+      "meters": {
+        "title": "Wybór liczników",
+        "data": {
+          "meters": "Punkty poboru energii (PPE)"
+        }
+      },
+      "names": {
+        "title": "Nazwy liczników",
+        "description": "Opcjonalnie nadaj własne nazwy (używane jako nazwy urządzeń i encji). Zostaw bez zmian, aby użyć nazwy z portalu."
+      },
+      "reauth_confirm": {
+        "title": "Ponowne uwierzytelnienie",
+        "description": "Portal odrzucił zapisane hasło dla konta {username}. Podaj aktualne hasło.",
+        "data": {
+          "password": "Hasło"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Nieprawidłowy login lub hasło",
+      "cannot_connect": "Nie można połączyć się z portalem",
+      "no_meters": "Na koncie nie znaleziono liczników",
+      "unknown": "Nieoczekiwany błąd (szczegóły w logach)"
+    },
+    "abort": {
+      "already_configured": "To konto jest już skonfigurowane",
+      "reauth_successful": "Hasło zostało zaktualizowane"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nazwy liczników",
+        "description": "Zmień nazwy własne liczników. Integracja zostanie przeładowana po zapisaniu.",
+        "data": {
+          "storage_ratio": "Zwrot z magazynu energii (%)"
+        },
+        "data_description": {
+          "storage_ratio": "Jaka część oddanej energii trafia do magazynu u operatora (np. 70)"
+        }
+      }
+    }
+  }
+}

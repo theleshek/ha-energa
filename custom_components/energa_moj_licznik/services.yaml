@@ -1,0 +1,27 @@
+set_storage:
+  name: Ustaw stan magazynu energii
+  description: Ustawia stan magazynu energii u operatora (kWh), np. przy pierwszym uruchomieniu.
+  target:
+    entity:
+      integration: energa_moj_licznik
+      domain: sensor
+  fields:
+    value:
+      name: Stan
+      description: Stan magazynu w kWh (liczony na koniec ostatniej przetworzonej godziny).
+      required: true
+      example: 123.4
+      selector:
+        number:
+          min: 0
+          max: 100000
+          step: 0.001
+          unit_of_measurement: kWh
+          mode: box
+reset_storage:
+  name: Zeruj magazyn energii
+  description: Zeruje stan magazynu energii u operatora.
+  target:
+    entity:
+      integration: energa_moj_licznik
+      domain: sensor

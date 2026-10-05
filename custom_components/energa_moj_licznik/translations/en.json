@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energa Mój Licznik",
+        "description": "Login for mojlicznik.energa-operator.pl",
+        "data": {
+          "username": "Login",
+          "password": "Password"
+        }
+      },
+      "meters": {
+        "title": "Select meters",
+        "data": {
+          "meters": "Energy points (PPE)"
+        }
+      },
+      "names": {
+        "title": "Meter names",
+        "description": "Optionally set custom names (used for device and entity names). Leave unchanged to use the portal name."
+      },
+      "reauth_confirm": {
+        "title": "Re-authentication",
+        "description": "The portal rejected the saved password for {username}. Enter the current password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid login or password",
+      "cannot_connect": "Cannot reach the portal",
+      "no_meters": "No meters found on the account",
+      "unknown": "Unexpected error (see logs)"
+    },
+    "abort": {
+      "already_configured": "This account is already configured",
+      "reauth_successful": "Password updated"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Meter names",
+        "description": "Change custom meter names. The integration reloads after saving.",
+        "data": {
+          "storage_ratio": "Storage return ratio (%)"
+        },
+        "data_description": {
+          "storage_ratio": "Share of exported energy credited to the operator storage (e.g. 70)"
+        }
+      }
+    }
+  }
+}
