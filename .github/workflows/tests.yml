@@ -17,4 +17,4 @@ jobs:
       - name: Kompilacja modułów zależnych od Home Assistanta
         run: |
           for f in custom_components/energa_moj_licznik/*.py; do python -m py_compile "$f"; done
-      - run: node --check custom_components/energa_moj_licznik/www/energa-meter-card.js
+      - run: node --check cards/energa-meter-card.js

@@ -22,7 +22,7 @@ pip install pytest aiohttp pillow playwright     # środowisko testowe (HA NIE j
 python3 -m pytest -q tests                       # wszystkie testy
 python3 -m pytest -q tests -k discovery          # pojedynczy test
 for f in custom_components/energa_moj_licznik/*.py; do python3 -m py_compile $f; done
-node --check custom_components/energa_moj_licznik/www/energa-meter-card.js
+node --check cards/energa-meter-card.js
 ```
 - Moduły zależne od HA (`__init__`, `config_flow`, `coordinator`, `sensor`, `stats`) da się tylko skompilować (`py_compile`),
   nie uruchomić. Testowalna logika jest celowo w czystych modułach: `api.py`, `hourly.py`, `const.py`.
@@ -30,7 +30,7 @@ node --check custom_components/energa_moj_licznik/www/energa-meter-card.js
   Testy HTTP stawiają atrapę portalu na `aiohttp.web` i nadpisują `api.BASE_URL`; cookie jar w testach: `CookieJar(unsafe=True)` (IP).
 - Test karty (Chromium): `pip install playwright`, launch z
   `executable_path='/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args=['--no-sandbox']` (nie uruchamiaj `playwright install`);
-  atrapa `hass` z `states`, `config.time_zone`. Karta jest w `www/energa-meter-card.js`.
+  atrapa `hass` z `states`, `config.time_zone`. Karta jest w `cards/energa-meter-card.js`.
 
 ## Architektura
 - `api.py` – `EnergaClient` (aiohttp): logowanie, `async_get_meters`, `async_get_readings`, `async_get_day_chart`; modele
@@ -49,7 +49,7 @@ node --check custom_components/energa_moj_licznik/www/energa-meter-card.js
 - `energy_store.py` + `hourly.storage_steps` – magazyn energii u operatora (opusty): doba po dobie (Europe/Warsaw): bilanse godzinowe (A+ − A−) sumowane w dobie; suma<0 (nadwyżka) → stan += ratio·nadwyżka, suma>0 → stan −= min(niedobór, stan); doba rozliczana dopiero gdy kompletna (stan = koniec ostatniej rozliczonej doby); ratio z opcji
   `storage_ratio` (domyślnie 70 %); stan trwale w `helpers.storage.Store`, start od ostatniej kompletnej godziny (bez backfillu), ustawianie przez usługi
   `set_storage`/`reset_storage` (sensor „Magazyn energii”) i encję `number` „Ustaw magazyn energii” (`number.py`). Jedna pula (bez podziału na strefy) – założenie niezweryfikowane z rozliczeniem Energi.
-- `www/energa-meter-card.js` – karta Lovelace (licznik mechaniczny jak na portalu, animacja przewijania, opcje `show_last_change`,
+- `cards/energa-meter-card.js` – karta Lovelace (licznik mechaniczny jak na portalu, animacja przewijania, opcje `show_last_change`,
   `show_last_refresh`, `animate_on_load`). Zasób użytkownika: `/local/energa-meter/energa-meter-card.js?v=…`.
 - `brand/` – ikony (nowsze HA czytają ikony integracji custom stąd). `scripts/probe.py`, `scripts/probe_chart.py` – diagnostyka portalu.
 
