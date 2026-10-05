@@ -1,0 +1,19 @@
+{
+  "domain": "energa_moj_licznik",
+  "name": "Energa Mój Licznik",
+  "codeowners": [
+    "@theleshek"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "recorder"
+  ],
+  "documentation": "https://github.com/theleshek/ha-energa",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/theleshek/ha-energa/issues",
+  "loggers": [
+    "custom_components.energa_moj_licznik"
+  ],
+  "requirements": [],
+  "version": "0.3.0"
+}
