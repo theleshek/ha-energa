@@ -8,7 +8,7 @@ oraz prosumentów (A+ pobór / A− oddanie, strefy 1 i 2).
 
 ## Struktura
 - `custom_components/energa_moj_licznik/` – integracja (config flow, koordynator, sensory)
-- `custom_components/energa_moj_licznik/www/energa-meter-card.js` – karta imitująca „Ostatnie odczyty licznika”
+- `cards/energa-meter-card.js` – karta imitująca „Ostatnie odczyty licznika”
 - `scripts/probe.py` – diagnostyka portalu (anonimizuje wyniki)
 
 ## Diagnostyka
