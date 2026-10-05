@@ -35,15 +35,18 @@ class EnergaCoordinator(DataUpdateCoordinator[dict[str, MeterData]]):
         client: EnergaClient,
         meters: list[Meter],
         entry_id: str = "",
-        storage_ratio: float = DEFAULT_STORAGE_RATIO,
+        storage_ratios: dict[str, float] | None = None,
     ) -> None:
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=DEFAULT_SCAN_INTERVAL)
         self.client = client
         self.last_refresh = None  # czas ostatniego udanego pobrania z portalu (UTC)
         self.meters = meters
         # magazyn energii u operatora - tylko dla prosumentów (klucz: id licznika)
+        ratios = storage_ratios or {}
         self.storages = {
-            m.id: EnergyStore(hass, entry_id, m.ppe, storage_ratio / 100) for m in meters if m.prosumer
+            m.id: EnergyStore(hass, entry_id, m.ppe, ratios.get(m.id, DEFAULT_STORAGE_RATIO) / 100)
+            for m in meters
+            if m.prosumer
         }
 
     async def async_load_storages(self) -> None:

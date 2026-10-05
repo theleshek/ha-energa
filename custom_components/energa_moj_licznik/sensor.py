@@ -198,7 +198,7 @@ class EnergaDailySensor(CoordinatorEntity, SensorEntity):
 class EnergaStorageSensor(CoordinatorEntity, SensorEntity):
     """Stan magazynu energii u operatora (system opustów).
 
-    Oddanie zasila magazyn w części (opcja "storage_ratio", domyślnie 70 %), pobór go
+    Oddanie zasila magazyn w części (opcja "storage_ratios", per licznik: 70 % lub 80 %), pobór go
     opróżnia. Wartość liczona godzinowo z danych portalu i zapamiętywana; ustaw ją usługą
     set_storage (albo encją number) przy pierwszym uruchomieniu lub po rozliczeniu z operatorem.
     Bez state_class: nie dodawaj do panelu Energia.

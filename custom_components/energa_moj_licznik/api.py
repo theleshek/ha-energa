@@ -58,6 +58,7 @@ class Meter:
     name: str
     tariff: str | None = None
     prosumer: bool = False
+    serial: str | None = None  # numer licznika (ze strony konta); domyślna nazwa urządzenia
     # Kandydaci na identyfikator "meterPoint" dla wykresów (pole konta -> wartość).
     # Portal używa innej liczby niż `id` licznika w danych konta, więc klient sprawdza
     # kolejne pola i zapamiętuje to, które działa.
@@ -163,15 +164,21 @@ class EnergaClient:
         """Pobierz listę liczników (PPE) konta wraz z identyfikatorami dla wykresów."""
         meters = self._parse_meters(await self._request("GET", "/dp/resources/user/data"))
         try:
-            mpc_by_ppe = self._parse_mpc(await self._get_text("/dp/UserAccount.do"))
+            page = await self._get_text("/dp/UserAccount.do")
         except EnergaError as err:
             _LOGGER.warning("Nie udało się pobrać strony konta z identyfikatorami liczników: %s", err)
-            mpc_by_ppe = {}
+            page = ""
+        mpc_by_ppe = self._parse_mpc(page)
+        serial_by_ppe = self._parse_serials(page)
         for meter in meters:
             mpc = mpc_by_ppe.get(meter.ppe) or (mpc_by_ppe.get("") if len(meters) == 1 else None)
             if mpc:
                 # identyfikator z odnośnika EnergyIndex.do?mpc=...&ppe=... ma pierwszeństwo
                 meter.chart_ids = {"mpc": mpc, **meter.chart_ids}
+            meter.serial = serial_by_ppe.get(meter.ppe) or (serial_by_ppe.get("") if len(meters) == 1 else None)
+            if meter.serial and meter.name == meter.ppe:
+                # portal nie podaje nazwy licznika - używamy jego numeru
+                meter.name = meter.serial
         _LOGGER.debug("Identyfikatory mpc znalezione dla %d z %d liczników", sum("mpc" in m.chart_ids for m in meters), len(meters))
         return meters
 
@@ -200,6 +207,22 @@ class EnergaClient:
             ids = set(re.findall(r"mpc=(\d+)", html))
             if len(ids) == 1:
                 found[""] = ids.pop()
+        return found
+
+    @staticmethod
+    def _parse_serials(html: str) -> dict[str, str]:
+        """Z ikon edycji na stronie konta (atrybuty ppe i meterSN) zrób słownik PPE -> numer licznika.
+
+        Gdy PPE brak, a numer jest jeden, zapisz go pod kluczem ''.
+        """
+        found: dict[str, str] = {}
+        for tag in re.findall(r"<[^>]*\bmeterSN=[^>]*>", html):
+            serial = re.search(r'meterSN="([^"]+)"', tag)
+            ppe = re.search(r'\bppe="([^"]+)"', tag)
+            if serial and serial.group(1).strip():
+                found.setdefault(ppe.group(1) if ppe else "", serial.group(1).strip())
+        if "" in found and len(found) > 1:
+            del found[""]
         return found
 
     async def async_get_readings(self) -> dict[str, Readings]:
