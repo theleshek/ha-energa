@@ -4,37 +4,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Projekt: niestandardowa integracja Home Assistant (HACS-ready) „Energa Mój Licznik” – pobiera dane z nieoficjalnego
 API portalu https://mojlicznik.energa-operator.pl/ (Energa-Operator). Użytkownik (po polsku) jest prosumentem,
-taryfa G12W, HAOS na VM w Hyper-V. Rozmowa i komunikaty w integracji/kartach są po polsku. Gałąź robocza:
-`claude/vibrant-franklin-xaeuuj`; PR tylko na wyraźną prośbę; commity z trailerami z system-reminder.
+taryfa G12W, HAOS na VM w Hyper-V. Rozmowa i komunikaty w integracji/kartach są po polsku.
+Gałęzie: praca na `dev`, `main` scalamy rzadko (wydania). Commit/push/PR tylko na wyraźną prośbę; commity z trailerami z system-reminder.
 
 ## Środowisko pracy (ważne)
-- Sesja Claude działa w chmurowym kontenerze **bez dostępu do portalu ML i do HA użytkownika**. Rzeczywiste odpowiedzi portalu
-  dostajemy tylko od użytkownika: uruchamia on `scripts/probe*.py` u siebie (Windows/PowerShell: `py scripts/probe.py`,
-  zmienne `$env:ENERGA_USER`, `$env:ENERGA_PASS`) i wkleja/załącza wyniki albo HAR z Chrome. Po jego stronie: kopiuje
-  `custom_components/energa_moj_licznik` do `/config/custom_components/`, restartuje HA, wkleja logi.
+- Sesja działa **lokalnie na Windowsie użytkownika** (repo w `C:/Users/Leszek/OneDrive/Dokumenty/GitHub/ha-energa`, folder synchronizowany
+  przez OneDrive – bez dużych plików tymczasowych). Można ją wywoływać zdalnie z aplikacji Claude na Androidzie (Remote Control).
+  Nadal **nie mamy dostępu do portalu ML ani do HA użytkownika**: rzeczywiste odpowiedzi portalu dostajemy tylko od użytkownika
+  (HAR z Chrome w `har/` – ignorowany przez git – albo wyniki `scripts/probe*.py`: `py scripts/probe.py`, zmienne `$env:ENERGA_USER`,
+  `$env:ENERGA_PASS`). Po jego stronie: kopiuje `custom_components/energa_moj_licznik` do `/config/custom_components/`, restartuje HA, wkleja logi.
+- Przy odczycie HAR/HTML nie wypisuj w rozmowie e-maila, adresu, PPE ani numeru licznika (maskuj cyfry).
+- Pliki repo mają zakończenia linii CRLF – przy skryptowej edycji zachowaj je.
 - Logi/HAR/raporty od użytkownika zawierają jego e-mail, numer PPE, adres – nie wpisuj ich do repo ani do commitów
   (`probe_output/` i `*.har` są w .gitignore). Skrypty probe maskują dane, ale nie wszystko.
 - Nie wymyślaj struktur odpowiedzi portalu – najpierw dane od użytkownika, parsowanie pisz tolerancyjnie.
 
 ## Komendy
 ```
-pip install pytest aiohttp pillow playwright     # środowisko testowe (HA NIE jest zainstalowany)
-python3 -m pytest -q tests                       # wszystkie testy
-python3 -m pytest -q tests -k discovery          # pojedynczy test
-for f in custom_components/energa_moj_licznik/*.py; do python3 -m py_compile $f; done
-node --check cards/energa-meter-card.js
+pip install pytest aiohttp tzdata                # środowisko testowe (HA NIE jest zainstalowany; tzdata potrzebne na Windowsie)
+python -m pytest -q tests                        # wszystkie testy (na Windowsie też: py -m pytest)
+python -m pytest -q tests -k serials             # pojedynczy test
+for f in custom_components/energa_moj_licznik/*.py; do python -m py_compile "$f"; done   # w Git Bash
+node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; lokalnie może go nie być)
 ```
+- Test karty (Chromium) był robiony w poprzednim, chmurowym środowisku; lokalnie wymaga `pip install pillow playwright` i przeglądarki.
 - Moduły zależne od HA (`__init__`, `config_flow`, `coordinator`, `sensor`, `stats`) da się tylko skompilować (`py_compile`),
   nie uruchomić. Testowalna logika jest celowo w czystych modułach: `api.py`, `hourly.py`, `const.py`.
 - Testy ładują pakiet bez `__init__.py`: `types.ModuleType("energa_pkg")` z `__path__`, potem `importlib.import_module("energa_pkg.api")`.
   Testy HTTP stawiają atrapę portalu na `aiohttp.web` i nadpisują `api.BASE_URL`; cookie jar w testach: `CookieJar(unsafe=True)` (IP).
-- Test karty (Chromium): `pip install playwright`, launch z
-  `executable_path='/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args=['--no-sandbox']` (nie uruchamiaj `playwright install`);
-  atrapa `hass` z `states`, `config.time_zone`. Karta jest w `cards/energa-meter-card.js`.
+- Test karty (Chromium): atrapa `hass` z `states`, `config.time_zone`. Karta jest w `cards/energa-meter-card.js`
+  (katalog to `cards/`, nie `card/`; CI w `.github/workflows` – `tests.yml`, `validate.yml` z hassfest i HACS – już istnieje).
 
 ## Architektura
 - `api.py` – `EnergaClient` (aiohttp): logowanie, `async_get_meters`, `async_get_readings`, `async_get_day_chart`; modele
-  `Meter`, `Readings`; wyjątki `EnergaError` → `EnergaHttpError`(status) / `EnergaAuthError`.
+  `Meter` (m.in. `serial` – numer licznika z `UserAccount.do`, atrybut `meterSN`), `Readings`; wyjątki `EnergaError` → `EnergaHttpError`(status) / `EnergaAuthError`.
 - `hourly.py` – czysta logika: `ChartPoint`, `accumulate` (sumy narastające, przerywa na pierwszej niekompletnej godzinie),
   `daily_usage`.
 - `stats.py` – import godzinowych statystyk zewnętrznych do recordera (`energa_moj_licznik:<PPE>_pobor[_strefa_N]`, `_oddanie…`);
@@ -45,9 +48,12 @@ node --check cards/energa-meter-card.js
 - `sensor.py` – sensory stanów (A+1, A+2, A−1, A−2; `total_increasing`) i dzienne (Pobór/Oddanie/Bilans dziś/wczoraj, bez state_class;
   A−/bilans tylko dla prosumenta). Atrybuty `reading_time` (UTC) i `last_refresh` (UTC).
 - `config_flow.py` – login/hasło → wybór PPE (`cv.multi_select`) → nazwy własne; options flow do zmiany nazw; reauth.
-  Nazwy: `entry.options[names]` > `entry.data[names]` > nazwa z portalu (podmieniane przez `dataclasses.replace` w `__init__`).
+  Kroki: login → PPE → nazwy → (dla prosumentów) próg zwrotu z magazynu 70/80 % → `entry.options[storage_ratios]`.
+  Nazwy: `entry.options[names]` > `entry.data[names]` > nazwa z portalu > numer licznika (portal zwykle nie podaje nazwy; domyślnie
+  w formularzu wpisywany jest numer licznika, użytkownik może nadać własną) (podmieniane przez `dataclasses.replace` w `__init__`).
 - `energy_store.py` + `hourly.storage_steps` – magazyn energii u operatora (opusty): doba po dobie (Europe/Warsaw): bilanse godzinowe (A+ − A−) sumowane w dobie; suma<0 (nadwyżka) → stan += ratio·nadwyżka, suma>0 → stan −= min(niedobór, stan); doba rozliczana dopiero gdy kompletna (stan = koniec ostatniej rozliczonej doby); ratio z opcji
-  `storage_ratio` (domyślnie 70 %); stan trwale w `helpers.storage.Store`, start od ostatniej kompletnej godziny (bez backfillu), ustawianie przez usługi
+  `storage_ratios` (per licznik, wybór 70 % / 80 %: net metering do 10 kW → 80 %, powyżej → 70 %; domyślnie 80 % dla nowych wpisów;
+  wpisy sprzed tej opcji zachowują starą wspólną `storage_ratio`, domyślnie 70 %, więc istniejąca instalacja użytkownika się nie zmienia); stan trwale w `helpers.storage.Store`, start od ostatniej kompletnej godziny (bez backfillu), ustawianie przez usługi
   `set_storage`/`reset_storage` (sensor „Magazyn energii”) i encję `number` „Ustaw magazyn energii” (`number.py`). Jedna pula (bez podziału na strefy) – założenie niezweryfikowane z rozliczeniem Energi.
 - `cards/energa-meter-card.js` – karta Lovelace (licznik mechaniczny jak na portalu, animacja przewijania, opcje `show_last_change`,
   `show_last_refresh`, `animate_on_load`). Zasób użytkownika: `/local/energa-meter/energa-meter-card.js?v=…`.
@@ -84,5 +90,7 @@ node --check cards/energa-meter-card.js
 
 ## Stan i pomysły na dalej
 - Wg użytkownika wszystko działa (logowanie, sensory, import godzinowy, karta). Niezweryfikowane w prawdziwym HA: dokładne pola metadanych statystyk w nowych wersjach HA.
-- Możliwe kolejne kroki: sensory miesięczne (`type=MONTH`), wydanie/PR i instalacja przez HACS, README po angielsku, domyślna nazwa urządzenia = numer licznika
-  (z `UserAccount.do`), ewentualne `docs/` (katalog pusty).
+- W toku (gałąź `dev`): sensory miesięczne – **tylko bilans** (`type=MONTH`, `mo=BP`; potrzebny HAR strony „Wykresy” z widokiem miesiąca),
+  weryfikacja modelu magazynu energii z danymi z portalu (potrzebny HAR strony, na której portal pokazuje stan magazynu/opusty), README po polsku
+  (lista sensorów), wydanie przez HACS (workflow już są). Później: README po angielsku.
+- Zrobione na `dev`: próg magazynu per licznik (70/80 %), domyślna nazwa urządzenia = numer licznika (`meterSN`).

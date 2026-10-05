@@ -119,3 +119,25 @@ def test_second_login_with_active_session_does_not_need_form():
         return state["posts"]
 
     assert asyncio.run(run()) == 1
+
+
+ACCOUNT_HTML = """
+<a href="EnergyIndex.do?mpc=111111&ppe=481000000000000001" title="12345678"> 12345678 </a>
+<img src="images/ppeEdit.png" onclick="showDialogMeterName(this)"
+     ppe="481000000000000001"
+     meterSN="12345678"
+     meterName=""
+     displayMeterName="false" title="Edytuj" />
+<img src="images/ppeEdit.png" meterSN="87654321" ppe="481000000000000002" />
+<img src="images/ppeEdit.png" ppe="481000000000000003" meterSN="" />
+"""
+
+
+def test_parse_serials_by_ppe():
+    found = api.EnergaClient._parse_serials(ACCOUNT_HTML)
+    assert found == {"481000000000000001": "12345678", "481000000000000002": "87654321"}
+
+
+def test_parse_serials_without_ppe_is_single_fallback():
+    assert api.EnergaClient._parse_serials('<img meterSN="42">') == {"": "42"}
+    assert api.EnergaClient._parse_serials("<html>brak</html>") == {}
