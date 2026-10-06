@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, ZONES
 from .storage import ZONES as STORAGE_ZONES
+from .storage import period_change
 
 NAMES = {
     "A+1": "Pobór strefa 1",
@@ -26,9 +27,9 @@ NAMES = {
 }
 
 BALANCE_NAMES = {
-    "1": "Bilans strefa 1",
-    "2": "Bilans strefa 2",
-    "all": "Bilans łącznie",
+    "1": "Saldo liczników strefa 1",
+    "2": "Saldo liczników strefa 2",
+    "all": "Saldo liczników łącznie",
 }
 
 DAILY_NAMES = {
@@ -71,6 +72,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for meter in coordinator.meters
         if meter.prosumer
         for period in MONTHLY_NAMES
+    ]
+    entities += [
+        EnergaPeriodBalanceSensor(coordinator, meter) for meter in coordinator.meters if meter.id in coordinator.storages
     ]
     entities += [
         EnergaStorageSensor(coordinator, meter, zone)
@@ -253,6 +257,50 @@ class EnergaMonthlySensor(CoordinatorEntity, SensorEntity):
         if not balance:
             return {}
         return {"month": balance.month.strftime("%Y-%m"), "complete": balance.complete}
+
+
+class EnergaPeriodBalanceSensor(CoordinatorEntity, SensorEntity):
+    """Zmiana magazynu energii w bieżącym okresie rozliczeniowym (obie strefy razem).
+
+    współczynnik x suma godzin z nadwyżką - suma godzin z niedoborem, od początku okresu do ostatniej
+    wliczonej godziny. Dodatnia = magazyn rośnie. Atrybuty: wartości per strefa i sumy godzinowych sald.
+    Bez state_class: nie dodawaj do panelu Energia.
+    """
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 3
+    _attr_has_entity_name = True
+    _attr_name = "Saldo okresu rozliczeniowego"
+    _attr_icon = "mdi:battery-plus-variant"
+
+    def __init__(self, coordinator, meter) -> None:
+        super().__init__(coordinator)
+        self._store = coordinator.storages[meter.id]
+        self._attr_unique_id = f"{meter.ppe}_period_balance"
+        self._attr_device_info = _device_info(meter)
+
+    @property
+    def native_value(self):
+        return round(sum(period_change(self._store.state, self._store.ratio).values()), 3)
+
+    @property
+    def extra_state_attributes(self):
+        store, state = self._store, self._store.state
+        change = period_change(state, store.ratio)
+        start, end = store.period()
+        attrs = {
+            "zone_1_kwh": round(change[1], 3),
+            "zone_2_kwh": round(change[2], 3),
+            "positive_balance_kwh": round(sum(state.pos.values()), 3),
+            "negative_balance_kwh": round(sum(state.neg.values()), 3),
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "ratio_percent": round(store.ratio * 100, 1),
+        }
+        if state.last_hour:
+            attrs["calculated_until"] = state.last_hour.isoformat()
+        return attrs
 
 
 class EnergaStorageSensor(CoordinatorEntity, SensorEntity):

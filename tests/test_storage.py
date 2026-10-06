@@ -158,3 +158,12 @@ def test_state_roundtrip():
     again = storage.StorageState.from_dict(state.to_dict())
     assert again.to_dict() == state.to_dict()
     assert again.lots[1][0].day == date(2026, 6, 30) and again.last_hour == state.last_hour
+
+
+def test_period_change_is_ratio_times_negative_minus_positive():
+    state = storage.StorageState()
+    state.pos = {1: 100.0, 2: 40.0}
+    state.neg = {1: 300.0, 2: 10.0}
+    change = storage.period_change(state, 0.7)
+    assert change == {1: pytest.approx(110.0), 2: pytest.approx(-33.0)}
+    assert sum(change.values()) == pytest.approx(77.0)

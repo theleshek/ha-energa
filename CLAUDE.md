@@ -59,7 +59,8 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
 - `coordinator.py` – `DataUpdateCoordinator` co 1 h: login (jeśli sesja nieważna) → odczyty → dla każdego licznika
   `async_sync_hourly`; błąd danych godzinowych nie wyłącza sensorów stanów. `MeterData(readings, daily)`.
 - `sensor.py` – sensory stanów (A+1, A+2, A−1, A−2; `total_increasing`) i dzienne (Pobór/Oddanie/Bilans dziś/wczoraj, bez state_class;
-  A−/bilans tylko dla prosumenta). Atrybuty `reading_time` (UTC) i `last_refresh` (UTC). Dla prosumenta także „Bilans ten/poprzedni miesiąc”
+  A−/bilans tylko dla prosumenta). Atrybuty `reading_time` (UTC) i `last_refresh` (UTC). „Saldo liczników strefa 1/2/łącznie” (dawniej „Bilans …”, unique_id `_balance_*` bez zmian) to fizyczne A+ − A− ze stanów liczników, nie rozliczenie.
+  Dla prosumenta także „Bilans ten/poprzedni miesiąc”
   (`EnergaMonthlySensor`, wykres YEAR `mo=BP`, `MeterData.monthly`, `hourly.monthly_balance`; w styczniu drugie zapytanie o poprzedni rok).
 - `config_flow.py` – login/hasło → wybór PPE (`cv.multi_select`) → nazwy własne; options flow do zmiany nazw; reauth.
   Kroki: login → PPE → nazwy → (dla prosumentów) próg zwrotu z magazynu 70/80 % → `entry.options[storage_ratios]`.
@@ -70,7 +71,7 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
   godzin osobno w okresie rozliczeniowym (`storage.period_bounds`, okresy od stycznia, domyślnie 2 mies., opcja `storage_period`), nadwyżka × współczynnik →
   partia (data = koniec okresu, ważna 12 mies., FIFO), pobór z tej samej strefy, potem z drugiej, reszta = `to_pay`. `advance()` wlicza kompletne godziny
   po kolei (luka → stop i `gap_from`), `settle()` zamyka okres, `project()` daje stan „gdyby okres skończył się teraz”. Przy starcie koordynator dociąga
-  dane od początku okresu (`needed_from`). Sensory „Magazyn energii strefa 1/2/razem”, number „Ustaw magazyn energii strefa N”, usługi
+  dane od początku okresu (`needed_from`). Sensory „Magazyn energii strefa 1/2/razem” i „Saldo okresu rozliczeniowego” (`storage.period_change`), number „Ustaw magazyn energii strefa N”, usługi
   `set_storage` (value, date, append) / `reset_storage`. Współczynnik z opcji `storage_ratios` (per licznik, 70 % / 80 %: do 10 kW → 80 %, powyżej → 70 %;
   domyślnie 80 % dla nowych wpisów; wpisy sprzed tej opcji zachowują starą wspólną `storage_ratio`, domyślnie 70 %).
 - `cards/energa-meter-card.js` – karta Lovelace (licznik mechaniczny jak na portalu, animacja przewijania, opcje `show_last_change`,

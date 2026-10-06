@@ -34,10 +34,13 @@ Wszystkie wartości w kWh.
 |---|---|---|
 | Pobór strefa 1, Pobór strefa 2 | wszyscy | ostatni odczyt licznika (A+), `total_increasing` |
 | Oddanie strefa 1, Oddanie strefa 2 | prosumenci | ostatni odczyt licznika (A−), `total_increasing` |
-| Bilans strefa 1, Bilans strefa 2, Bilans łącznie | prosumenci | **wyliczane:** pobór − oddanie ze stanów liczników (bez `state_class`, może maleć) |
+| Saldo liczników strefa 1, strefa 2, łącznie | prosumenci | **wyliczane:** pobór − oddanie ze stanów liczników (bez `state_class`, może maleć) |
 
 Odczyty zmieniają się raz na dobę (portal podaje stan z północy). Atrybuty: `reading_time` (czas odczytu, UTC),
 `last_refresh` (ostatnie pobranie z portalu, UTC).
+
+Wszystkie „bilanse” i „salda liczników” to **fizyczna różnica pobór − oddanie** (bez współczynnika 0,7/0,8, bez podziału na strefy w rozliczeniu i bez okresu
+rozliczeniowego). Rozliczenie według zasad net metering robią sensory „Magazyn energii” i „Saldo okresu rozliczeniowego” (niżej).
 
 ### Zużycie dzienne
 | Encja | Dla kogo | Skąd |
@@ -62,6 +65,7 @@ Bez `state_class`. Atrybuty: `month` (RRRR-MM), `complete`. Bieżący miesiąc z
 | Magazyn energii strefa 1, Magazyn energii strefa 2 | sensor | **wyliczany model** stanu magazynu (opusty) w strefie |
 | Magazyn energii razem | sensor | suma obu stref |
 | Ustaw magazyn energii strefa 1, strefa 2 | number | ręczne ustawienie stanu strefy (kWh) |
+| Saldo okresu rozliczeniowego | sensor | zmiana magazynu w bieżącym okresie: współczynnik × suma godzin z nadwyżką − suma godzin z niedoborem (atrybuty: strefa 1 i 2, sumy sald, okres) |
 
 Model odtwarza rozliczenie Energi z faktury (sprawdzony na fakturach za 2026 r., zgodność co do pojedynczych kWh):
 1. Bilans liczony jest **w każdej godzinie osobno dla każdej strefy** (pobór − oddanie, z danych godzinowych portalu).
