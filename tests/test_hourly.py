@@ -317,40 +317,58 @@ def test_login_captcha_is_transient_not_auth_error():
     assert isinstance(err, api.EnergaError) and not isinstance(err, api.EnergaAuthError)
 
 
-def _day_points(day, values, complete=True):
-    """24 godziny doby UTC: values = {godzina: (pobór, oddanie)}, reszta 0."""
-    from datetime import datetime, timedelta, timezone
-
-    h0 = datetime(2026, 1, day, tzinfo=timezone.utc)
-    plus, minus = [], []
-    for i in range(24):
-        a, b = values.get(i, (0.0, 0.0))
-        plus.append(hourly.ChartPoint(start=h0 + timedelta(hours=i), zones=[a, 0.0, None], complete=complete))
-        minus.append(hourly.ChartPoint(start=h0 + timedelta(hours=i), zones=[b, 0.0, None], complete=complete))
-    return plus, minus
-
-
-def test_storage_daily_sum_then_ratio():
-    from datetime import datetime, timedelta, timezone
-
-    # doba 1: godziny netto: -5 (nadwyżka), +3 (niedobór), -2 -> suma doby -4 -> do magazynu 0.7*4
-    p1, m1 = _day_points(1, {10: (0.0, 5.0), 11: (3.0, 0.0), 12: (0.0, 2.0)})
-    # doba 2: netto +1.0 -> z magazynu
-    p2, m2 = _day_points(2, {8: (1.0, 0.0)})
-    # doba 3 niekompletna -> nie rozliczana
-    p3, m3 = _day_points(3, {8: (9.0, 0.0)})
-    p3, m3 = p3[:10], m3[:10]
-    value, last, credited, drawn = hourly.storage_steps(p1 + p2 + p3, m1 + m2 + m3, None, 0.0, 0.7)
-    assert credited == 2.8 and drawn == 1.0 and value == 1.8
-    assert last == datetime(2026, 1, 2, 23, tzinfo=timezone.utc)
-    # ponowne wywołanie od 'last' nic nie zmienia
-    assert hourly.storage_steps(p1 + p2 + p3, m1 + m2 + m3, last, value, 0.7)[0] == 1.8
+# Wykres roczny bilansu (mo=BP) jak w prawdziwym HAR: jedna pozycja na miesiąc, jedna strefa "Wartości".
+YEAR_BP = {
+    "success": True,
+    "response": {
+        "meterObject": "BP",
+        "type": "YEAR",
+        "mainChart": [
+            {"tm": "1767222000000", "zones": [5680.211], "est": False, "cplt": True},  # 2026-01
+            {"tm": "1788213600000", "zones": [-664.367], "est": False, "cplt": True},  # 2026-09
+            {"tm": "1790805600000", "zones": [-84.731], "est": False, "cplt": True},  # 2026-10 (w toku)
+        ],
+    },
+}
 
 
-def test_storage_daily_floor_and_incomplete_hour():
-    p, m = _day_points(1, {5: (7.0, 0.0)})
-    assert hourly.storage_steps(p, m, None, 2.0, 0.7)[0] == 0.0  # niedobór > stanu
-    p, m = _day_points(1, {5: (0.0, 4.0)}, complete=True)
-    p[23] = hourly.ChartPoint(start=p[23].start, zones=[0.0, 0.0, None], complete=False)
-    assert hourly.storage_steps(p, m, None, 0.0, 0.7)[1] is None  # doba z niekompletną godziną
-    assert hourly.latest_common_hour(*_day_points(1, {})) is not None
+def test_monthly_balance_from_year_chart():
+    pts = api.EnergaClient._parse_chart(YEAR_BP)
+    this = hourly.monthly_balance(pts, date(2026, 10, 1), PORTAL_TZ)
+    assert (this.value, this.complete) == (-84.731, True)
+    assert hourly.monthly_balance(pts, date(2026, 9, 1), PORTAL_TZ).value == -664.367
+    assert hourly.monthly_balance(pts, date(2026, 1, 1), PORTAL_TZ).value == 5680.211
+    assert hourly.monthly_balance(pts, date(2026, 2, 1), PORTAL_TZ) is None
+
+
+def test_year_chart_request_matches_browser_request():
+    """Jak w HAR: mainChartDate=1 stycznia (północ Warszawy), type=YEAR, mo=BP."""
+    import asyncio
+
+    import aiohttp
+    from aiohttp import web
+
+    seen = {}
+
+    async def run():
+        async def chart(request):
+            seen.update(request.query)
+            return web.json_response(YEAR_BP)
+
+        app = web.Application()
+        app.router.add_get("/dp/resources/chart", chart)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        api.BASE_URL = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        async with aiohttp.ClientSession() as s:
+            client = api.EnergaClient(s, "u", "p")
+            meter = api.Meter(id="100001", ppe="PPE", name="Dom")
+            pts = await client.async_get_year_chart(meter, "BP", 2026)
+        await runner.cleanup()
+        return pts
+
+    pts = asyncio.run(run())
+    assert seen == {"mainChartDate": "1767222000000", "type": "YEAR", "meterPoint": "100001", "mo": "BP"}
+    assert len(pts) == 3

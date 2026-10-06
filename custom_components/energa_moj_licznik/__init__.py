@@ -13,7 +13,16 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import EnergaAuthError, EnergaClient, EnergaError
-from .const import CONF_METERS, CONF_NAMES, CONF_STORAGE_RATIO, DEFAULT_STORAGE_RATIO, DOMAIN
+from .const import (
+    CONF_METERS,
+    CONF_NAMES,
+    CONF_STORAGE_RATIO,
+    CONF_STORAGE_PERIOD,
+    CONF_STORAGE_RATIOS,
+    DEFAULT_STORAGE_PERIOD,
+    DOMAIN,
+    LEGACY_STORAGE_RATIO,
+)
 from .coordinator import EnergaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,8 +57,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_USERNAME],
         ", ".join(f"{m.name} ({m.tariff}, {'prosument' if m.prosumer else 'odbiorca'})" for m in meters) or "brak",
     )
-    ratio = float(entry.options.get(CONF_STORAGE_RATIO, DEFAULT_STORAGE_RATIO))
-    coordinator = EnergaCoordinator(hass, client, meters, entry.entry_id, ratio)
+    # Próg zwrotu z magazynu per licznik; wpisy sprzed tej opcji zachowują dotychczasową wartość wspólną.
+    legacy = float(entry.options.get(CONF_STORAGE_RATIO, LEGACY_STORAGE_RATIO))
+    per_meter = entry.options.get(CONF_STORAGE_RATIOS, {})
+    ratios = {m.id: float(per_meter.get(m.id, legacy)) for m in meters}
+    period = int(entry.options.get(CONF_STORAGE_PERIOD, DEFAULT_STORAGE_PERIOD))
+    coordinator = EnergaCoordinator(hass, client, meters, entry.entry_id, ratios, period)
     await coordinator.async_load_storages()
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

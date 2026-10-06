@@ -18,9 +18,15 @@ from .const import (
     CONF_METERS,
     CONF_METERS_INFO,
     CONF_NAMES,
+    CONF_STORAGE_PERIOD,
     CONF_STORAGE_RATIO,
+    CONF_STORAGE_RATIOS,
+    DEFAULT_STORAGE_PERIOD,
     DEFAULT_STORAGE_RATIO,
     DOMAIN,
+    LEGACY_STORAGE_RATIO,
+    STORAGE_PERIOD_CHOICES,
+    STORAGE_RATIO_CHOICES,
 )
 
 
@@ -34,6 +40,7 @@ class EnergaConfigFlow(ConfigFlow, domain=DOMAIN):
         self._creds: dict[str, str] = {}
         self._meters: list[Meter] = []
         self._selected: list[str] = []
+        self._names: dict[str, str] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -126,15 +133,10 @@ class EnergaConfigFlow(ConfigFlow, domain=DOMAIN):
                 for label, m in labels.items()
                 if user_input.get(label, "").strip()
             }
-            return self.async_create_entry(
-                title=self._creds[CONF_USERNAME],
-                data={
-                    **self._creds,
-                    CONF_METERS: self._selected,
-                    CONF_NAMES: names,
-                    CONF_METERS_INFO: {m.id: {"name": m.name, "ppe": m.ppe} for m in chosen},
-                },
-            )
+            self._names = names
+            if any(m.prosumer for m in chosen):
+                return await self.async_step_storage()
+            return self._create_entry({})
         return self.async_show_form(
             step_id="names",
             data_schema=vol.Schema(
@@ -142,13 +144,62 @@ class EnergaConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
         )
 
+    async def async_step_storage(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Próg zwrotu z magazynu energii (net metering) dla każdego prosumenta."""
+        prosumers = {_label(m): m for m in self._meters if m.id in self._selected and m.prosumer}
+        if user_input is not None:
+            ratios = {m.id: float(user_input[label]) for label, m in prosumers.items()}
+            return self._create_entry(
+                {CONF_STORAGE_RATIOS: ratios, CONF_STORAGE_PERIOD: int(user_input[CONF_STORAGE_PERIOD])}
+            )
+        default = _ratio_key(DEFAULT_STORAGE_RATIO)
+        return self.async_show_form(
+            step_id="storage",
+            data_schema=vol.Schema(
+                {
+                    **{vol.Required(label, default=default): vol.In(_ratio_choices()) for label in prosumers},
+                    vol.Required(CONF_STORAGE_PERIOD, default=str(DEFAULT_STORAGE_PERIOD)): vol.In(_period_choices()),
+                }
+            ),
+        )
+
+    def _create_entry(self, options: dict[str, Any]) -> ConfigFlowResult:
+        chosen = [m for m in self._meters if m.id in self._selected]
+        return self.async_create_entry(
+            title=self._creds[CONF_USERNAME],
+            data={
+                **self._creds,
+                CONF_METERS: self._selected,
+                CONF_NAMES: self._names,
+                CONF_METERS_INFO: {m.id: {"name": m.name, "ppe": m.ppe} for m in chosen},
+            },
+            options=options,
+        )
+
 
 def _label(meter: Meter) -> str:
     return f"{meter.name} ({meter.ppe})"
 
 
+def _period_choices() -> dict[str, str]:
+    """Długość okresu rozliczeniowego (miesiące) - z umowy ze sprzedawcą (zwykle 2)."""
+    return {str(m): str(m) for m in STORAGE_PERIOD_CHOICES}
+
+
+def _ratio_key(ratio: float) -> str:
+    return f"{ratio:g}"
+
+
+def _ratio_choices(current: float | None = None) -> dict[str, str]:
+    """Dozwolone progi zwrotu (70 %, 80 %); wartość spoza listy (stara opcja) zostaje dostępna."""
+    values = list(STORAGE_RATIO_CHOICES)
+    if current is not None and current not in values:
+        values.append(current)
+    return {_ratio_key(v): f"{_ratio_key(v)} %" for v in sorted(values)}
+
+
 class EnergaOptionsFlow(OptionsFlow):
-    """Zmiana nazw własnych liczników po dodaniu integracji."""
+    """Zmiana nazw własnych i progu zwrotu z magazynu energii po dodaniu integracji."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         entry = self.config_entry
@@ -161,14 +212,25 @@ class EnergaOptionsFlow(OptionsFlow):
             return f"{meta.get('name', mid)} ({meta.get('ppe', mid)})"
 
         labels = {label(mid): mid for mid in ids}
+        # Próg zwrotu dotyczy tylko prosumentów (mają magazyn w koordynatorze); klucze pól odróżniamy od nazw.
+        coordinator = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        prosumers = set(coordinator.storages) if coordinator else set()
+        legacy = float(entry.options.get(CONF_STORAGE_RATIO, LEGACY_STORAGE_RATIO))
+        per_meter = entry.options.get(CONF_STORAGE_RATIOS, {})
+        current_ratio = {mid: float(per_meter.get(mid, legacy)) for mid in prosumers}
+        period = int(entry.options.get(CONF_STORAGE_PERIOD, DEFAULT_STORAGE_PERIOD))
+        ratio_labels = {f"{lbl}: zwrot z magazynu": mid for lbl, mid in labels.items() if mid in prosumers}
         if user_input is not None:
             names = {
                 mid: user_input.get(lbl, "").strip()
                 for lbl, mid in labels.items()
                 if user_input.get(lbl, "").strip()
             }
-            ratio = float(user_input.get(CONF_STORAGE_RATIO, DEFAULT_STORAGE_RATIO))
-            return self.async_create_entry(data={CONF_NAMES: names, CONF_STORAGE_RATIO: ratio})
+            ratios = {mid: float(user_input[lbl]) for lbl, mid in ratio_labels.items()}
+            options = {CONF_NAMES: names, CONF_STORAGE_RATIOS: ratios}
+            if ratio_labels:
+                options[CONF_STORAGE_PERIOD] = int(user_input[CONF_STORAGE_PERIOD])
+            return self.async_create_entry(data=options)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -177,10 +239,19 @@ class EnergaOptionsFlow(OptionsFlow):
                         vol.Optional(lbl, default=current.get(mid) or info.get(mid, {}).get("name", "")): str
                         for lbl, mid in labels.items()
                     },
-                    vol.Optional(
-                        CONF_STORAGE_RATIO,
-                        default=entry.options.get(CONF_STORAGE_RATIO, DEFAULT_STORAGE_RATIO),
-                    ): vol.All(vol.Coerce(float), vol.Range(min=1, max=100)),
+                    **{
+                        vol.Required(lbl, default=_ratio_key(current_ratio[mid])): vol.In(
+                            _ratio_choices(current_ratio[mid])
+                        )
+                        for lbl, mid in ratio_labels.items()
+                    },
+                    **(
+                        {
+                            vol.Required(CONF_STORAGE_PERIOD, default=str(period)): vol.In(_period_choices()),
+                        }
+                        if ratio_labels
+                        else {}
+                    ),
                 }
             ),
         )

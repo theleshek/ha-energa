@@ -17,7 +17,14 @@
       },
       "names": {
         "title": "Meter names",
-        "description": "Optionally set custom names (used for device and entity names). Leave unchanged to use the portal name."
+        "description": "Optionally set custom names (used for device and entity names). By default the meter number (or the portal name) is used."
+      },
+      "storage": {
+        "title": "Energy storage (net metering)",
+        "description": "Share of exported energy returned from the operator storage: 80 % (installations up to 10 kW) or 70 % (above 10 kW). Also the billing period length in months from your contract (usually 2). Both can be changed later in the options.",
+        "data": {
+          "storage_period": "Billing period (months)"
+        }
       },
       "reauth_confirm": {
         "title": "Re-authentication",
@@ -41,13 +48,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Meter names",
-        "description": "Change custom meter names. The integration reloads after saving.",
+        "title": "Meters",
+        "description": "Change custom meter names and the energy storage return ratio (80 % up to 10 kW, 70 % above) and the billing period length. The integration reloads after saving.",
         "data": {
-          "storage_ratio": "Storage return ratio (%)"
-        },
-        "data_description": {
-          "storage_ratio": "Share of exported energy credited to the operator storage (e.g. 70)"
+          "storage_period": "Billing period (months)"
         }
       }
     }

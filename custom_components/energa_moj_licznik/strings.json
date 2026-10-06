@@ -17,7 +17,14 @@
       },
       "names": {
         "title": "Nazwy liczników",
-        "description": "Opcjonalnie nadaj własne nazwy (używane jako nazwy urządzeń i encji). Zostaw bez zmian, aby użyć nazwy z portalu."
+        "description": "Opcjonalnie nadaj własne nazwy (używane jako nazwy urządzeń i encji). Domyślnie używany jest numer licznika (albo nazwa z portalu)."
+      },
+      "storage": {
+        "title": "Magazyn energii (net metering)",
+        "description": "Jaka część oddanej energii wraca z magazynu u operatora: 80 % (instalacje do 10 kW) albo 70 % (powyżej 10 kW), oraz długość okresu rozliczeniowego w miesiącach z umowy (zwykle 2). Wartości można zmienić później w opcjach.",
+        "data": {
+          "storage_period": "Okres rozliczeniowy (miesiące)"
+        }
       },
       "reauth_confirm": {
         "title": "Ponowne uwierzytelnienie",
@@ -41,13 +48,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Nazwy liczników",
-        "description": "Zmień nazwy własne liczników. Integracja zostanie przeładowana po zapisaniu.",
+        "title": "Liczniki",
+        "description": "Zmień nazwy własne liczników i próg zwrotu z magazynu energii (80 % dla instalacji do 10 kW, 70 % powyżej) oraz długość okresu rozliczeniowego. Integracja zostanie przeładowana po zapisaniu.",
         "data": {
-          "storage_ratio": "Zwrot z magazynu energii (%)"
-        },
-        "data_description": {
-          "storage_ratio": "Jaka część oddanej energii trafia do magazynu u operatora (np. 70)"
+          "storage_period": "Okres rozliczeniowy (miesiące)"
         }
       }
     }
