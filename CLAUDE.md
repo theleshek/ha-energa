@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Projekt: niestandardowa integracja Home Assistant (HACS-ready) „Energa Mój Licznik” – pobiera dane z nieoficjalnego
 API portalu https://mojlicznik.energa-operator.pl/ (Energa-Operator). Użytkownik (po polsku) jest prosumentem,
 taryfa G12W, HAOS na VM w Hyper-V. Rozmowa i komunikaty w integracji/kartach są po polsku.
-Gałęzie: praca na `dev`, `main` scalamy rzadko (wydania). Commit/push/PR tylko na wyraźną prośbę; commity z trailerami z system-reminder.
+HAOS (Core 2026.9.x). Repozytorium jest **publiczne** (`theleshek/ha-energa`).
+Gałęzie: praca na `dev`, `main` scalamy rzadko (wydania, przez PR). Commit/push/PR tylko na wyraźną prośbę; commity z trailerami z system-reminder.
 
 ## Środowisko pracy (ważne)
 - Sesja działa **lokalnie na Windowsie użytkownika** (repo w `C:/Users/Leszek/OneDrive/Dokumenty/GitHub/ha-energa`, folder synchronizowany
@@ -15,8 +16,12 @@ Gałęzie: praca na `dev`, `main` scalamy rzadko (wydania). Commit/push/PR tylko
   `$env:ENERGA_PASS`). Po jego stronie: kopiuje `custom_components/energa_moj_licznik` do `/config/custom_components/`, restartuje HA, wkleja logi.
 - Przy odczycie HAR/HTML nie wypisuj w rozmowie e-maila, adresu, PPE ani numeru licznika (maskuj cyfry).
 - Pliki repo mają zakończenia linii CRLF – przy skryptowej edycji zachowaj je.
-- Logi/HAR/raporty od użytkownika zawierają jego e-mail, numer PPE, adres – nie wpisuj ich do repo ani do commitów
-  (`probe_output/` i `*.har` są w .gitignore). Skrypty probe maskują dane, ale nie wszystko.
+- **Repo jest publiczne: nie wpisuj tu danych z logów/HAR/faktur/raportów** (e-mail, hasło, numer PPE, adres, numer fabryczny licznika,
+  wewnętrzne identyfikatory portalu `id`/`mpc`/`dev`, kod pocztowy, numery faktur/klienta). W testach i dokumentacji używaj wartości
+  fikcyjnych (np. PPE `590000000000000001`, `mpc=100001`, `id=100002`). `probe_output/`, `har/` i `*.har` są w `.gitignore`;
+  skrypty probe maskują dane, ale nie wszystko.
+- Użytkownik pracuje w PowerShell 5.1 (brak `&&`; polecenia w osobnych liniach). Folder jest w OneDrive – przy błędach typu `index.lock` /
+  „unable to unlink” przenieś repo poza OneDrive.
 - Nie wymyślaj struktur odpowiedzi portalu – najpierw dane od użytkownika, parsowanie pisz tolerancyjnie.
 
 ## Komendy
@@ -34,6 +39,14 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
   Testy HTTP stawiają atrapę portalu na `aiohttp.web` i nadpisują `api.BASE_URL`; cookie jar w testach: `CookieJar(unsafe=True)` (IP).
 - Test karty (Chromium): atrapa `hass` z `states`, `config.time_zone`. Karta jest w `cards/energa-meter-card.js`
   (katalog to `cards/`, nie `card/`; CI w `.github/workflows` – `tests.yml`, `validate.yml` z hassfest i HACS – już istnieje).
+
+## Struktura repo
+- `custom_components/energa_moj_licznik/` – integracja (HACS instaluje tylko ten katalog). `manifest.json`: klucze po `domain`, `name`
+  posortowane alfabetycznie (wymóg hassfest), wersja podbijana przy wydaniach.
+- `cards/energa-meter-card.js` – karta Lovelace. HACS jej **nie** instaluje (leży poza `custom_components/`); użytkownik kopiuje ją ręcznie do
+  `/config/www/energa-meter/` i dodaje zasób `/local/energa-meter/energa-meter-card.js?v=…` (typ: module). Ścieżka w CI musi zgadzać się z `cards/`.
+- `hacs.json` – tylko `name` i `render_readme` (pole `homeassistant` z min. wersją powodowało błąd walidacji HACS – nie dodawać bez sprawdzenia).
+- `brand/` w integracji – ikony. `scripts/` – diagnostyka portalu. `tests/` – pytest. `.github/workflows/` – `tests.yml`, `validate.yml`.
 
 ## Architektura
 - `api.py` – `EnergaClient` (aiohttp): logowanie, `async_get_meters`, `async_get_readings`, `async_get_day_chart`; modele
@@ -101,12 +114,15 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
   najpierw HAR z przeglądarki (kod JS portalu: `js/app/chart.js` buduje parametry), potem skrypt.
 - Karta: nie renderuj `innerHTML` przy każdym `set hass` (niszczy animację) – DOM budowany raz, cyfry to paski 0–9 przesuwane `translateY`.
   HA mocno cache'uje JS: po zmianie pliku podbij `?v=` w zasobach (wersja karty jest w konsoli: `ENERGA-METER-CARD vX`). `reading_time` jest w UTC – karta formatuje do strefy HA.
+- Walidacja HACS: pole `"homeassistant"` w `hacs.json` i niesortowane klucze `manifest.json` powodowały błędy (`hacsjson`, `integration_manifest`);
+  `hacs/action` wymaga też tematów i opisu repo na GitHubie. `git filter-branch` bywa blokowany przez uprawnienia – przepisywanie historii robi
+  użytkownik sam (`git filter-repo`) albo zakłada repo od nowa z jednym commitem.
 - Panel Energia: nie mieszaj sensorów stanów licznika (zmieniają się raz na dobę o północy) ze statystykami godzinowymi – podwójne liczenie; sensory dzienne celowo bez `state_class`.
 - Sensory szablonowe użytkownika z `float` bez wartości domyślnej sypały błędami przy `unavailable` – zaleca się `availability` (`has_value`) zamiast `float(0)` (fałszywy „reset” dla total_increasing).
 
 ## Stan i pomysły na dalej
 - Wg użytkownika wszystko działa (logowanie, sensory, import godzinowy, karta). Niezweryfikowane w prawdziwym HA: dokładne pola metadanych statystyk w nowych wersjach HA.
 - W toku (gałąź `dev`): wydanie przez HACS (workflow już są), po wdrożeniu u użytkownika porównanie sensorów magazynu z kolejną fakturą.
-  Później: README po angielsku. Nieobsłużone: zmiana współczynnika w trakcie okresu, inne długości okresu niż wyrównane do stycznia, ust. 11 art. 4.
+  Później: README po angielsku, rejestracja karty przez samą integrację (żeby nie kopiować jej ręcznie). Nieobsłużone: zmiana współczynnika w trakcie okresu, inne długości okresu niż wyrównane do stycznia, ust. 11 art. 4.
 - Zrobione na `dev`: model magazynu per strefa zgodny z fakturą, próg magazynu per licznik (70/80 %), domyślna nazwa urządzenia = numer licznika (`meterSN`), README po polsku z listą sensorów,
   sensory „Bilans ten/poprzedni miesiąc”.

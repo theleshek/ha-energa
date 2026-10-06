@@ -4,7 +4,7 @@ Nieoficjalna integracja pobierająca dane z portalu [Mój Licznik](https://mojli
 (Energa-Operator) i udostępniająca je w Home Assistant. Obsługuje wiele PPE oraz prosumentów
 (A+ pobór / A− oddanie, strefy 1 i 2, taryfy jednostrefowe i wielostrefowe, np. G12W).
 
-**Status: wersja robocza.** Użycie na własne ryzyko; projekt nie jest związany z Energą.
+**Status: wersja robocza (0.4.3).** Użycie na własne ryzyko; projekt nie jest związany z Energą.
 Portal nie ma oficjalnego API – zmiana po stronie operatora może zatrzymać integrację.
 
 ## Instalacja
