@@ -135,6 +135,14 @@ def project(state: StorageState, ratio: float, months: int) -> tuple[dict[int, l
     return settle(state.lots, state.pos, state.neg, ratio, end)
 
 
+def period_change(state: StorageState, ratio: float) -> dict[int, float]:
+    """Zmiana magazynu w bieżącym okresie per strefa: współczynnik x suma godzin z nadwyżką - suma godzin z niedoborem.
+
+    Dodatnia = magazyn rośnie. To wartość przed rozliczeniem partii i bez ograniczenia stanu od dołu.
+    """
+    return {z: round(ratio * state.neg[z] - state.pos[z], 5) for z in ZONES}
+
+
 def needed_from(state: StorageState, today: date, months: int, tz: tzinfo) -> date:
     """Od którego dnia lokalnego potrzebne są dane godzinowe, by kontynuować liczenie."""
     if state.last_hour is not None:
