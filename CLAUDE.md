@@ -46,15 +46,20 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
 - `coordinator.py` – `DataUpdateCoordinator` co 1 h: login (jeśli sesja nieważna) → odczyty → dla każdego licznika
   `async_sync_hourly`; błąd danych godzinowych nie wyłącza sensorów stanów. `MeterData(readings, daily)`.
 - `sensor.py` – sensory stanów (A+1, A+2, A−1, A−2; `total_increasing`) i dzienne (Pobór/Oddanie/Bilans dziś/wczoraj, bez state_class;
-  A−/bilans tylko dla prosumenta). Atrybuty `reading_time` (UTC) i `last_refresh` (UTC).
+  A−/bilans tylko dla prosumenta). Atrybuty `reading_time` (UTC) i `last_refresh` (UTC). Dla prosumenta także „Bilans ten/poprzedni miesiąc”
+  (`EnergaMonthlySensor`, wykres YEAR `mo=BP`, `MeterData.monthly`, `hourly.monthly_balance`; w styczniu drugie zapytanie o poprzedni rok).
 - `config_flow.py` – login/hasło → wybór PPE (`cv.multi_select`) → nazwy własne; options flow do zmiany nazw; reauth.
   Kroki: login → PPE → nazwy → (dla prosumentów) próg zwrotu z magazynu 70/80 % → `entry.options[storage_ratios]`.
   Nazwy: `entry.options[names]` > `entry.data[names]` > nazwa z portalu > numer licznika (portal zwykle nie podaje nazwy; domyślnie
   w formularzu wpisywany jest numer licznika, użytkownik może nadać własną) (podmieniane przez `dataclasses.replace` w `__init__`).
-- `energy_store.py` + `hourly.storage_steps` – magazyn energii u operatora (opusty): doba po dobie (Europe/Warsaw): bilanse godzinowe (A+ − A−) sumowane w dobie; suma<0 (nadwyżka) → stan += ratio·nadwyżka, suma>0 → stan −= min(niedobór, stan); doba rozliczana dopiero gdy kompletna (stan = koniec ostatniej rozliczonej doby); ratio z opcji
-  `storage_ratios` (per licznik, wybór 70 % / 80 %: net metering do 10 kW → 80 %, powyżej → 70 %; domyślnie 80 % dla nowych wpisów;
-  wpisy sprzed tej opcji zachowują starą wspólną `storage_ratio`, domyślnie 70 %, więc istniejąca instalacja użytkownika się nie zmienia); stan trwale w `helpers.storage.Store`, start od ostatniej kompletnej godziny (bez backfillu), ustawianie przez usługi
-  `set_storage`/`reset_storage` (sensor „Magazyn energii”) i encję `number` „Ustaw magazyn energii” (`number.py`). Jedna pula (bez podziału na strefy) – założenie niezweryfikowane z rozliczeniem Energi.
+- `storage.py` (czysta logika) + `energy_store.py` (trwały stan w `helpers.storage.Store`, klucz `storage2_…`) – magazyn energii u operatora (net metering),
+  model **zweryfikowany na trzech kolejnych fakturach Energi co do kWh** (patrz „Zweryfikowane fakty”): bilanse godzinowe per strefa, sumy dodatnich/ujemnych
+  godzin osobno w okresie rozliczeniowym (`storage.period_bounds`, okresy od stycznia, domyślnie 2 mies., opcja `storage_period`), nadwyżka × współczynnik →
+  partia (data = koniec okresu, ważna 12 mies., FIFO), pobór z tej samej strefy, potem z drugiej, reszta = `to_pay`. `advance()` wlicza kompletne godziny
+  po kolei (luka → stop i `gap_from`), `settle()` zamyka okres, `project()` daje stan „gdyby okres skończył się teraz”. Przy starcie koordynator dociąga
+  dane od początku okresu (`needed_from`). Sensory „Magazyn energii strefa 1/2/razem”, number „Ustaw magazyn energii strefa N”, usługi
+  `set_storage` (value, date, append) / `reset_storage`. Współczynnik z opcji `storage_ratios` (per licznik, 70 % / 80 %: do 10 kW → 80 %, powyżej → 70 %;
+  domyślnie 80 % dla nowych wpisów; wpisy sprzed tej opcji zachowują starą wspólną `storage_ratio`, domyślnie 70 %).
 - `cards/energa-meter-card.js` – karta Lovelace (licznik mechaniczny jak na portalu, animacja przewijania, opcje `show_last_change`,
   `show_last_refresh`, `animate_on_load`). Zasób użytkownika: `/local/energa-meter/energa-meter-card.js?v=…`.
 - `brand/` – ikony (nowsze HA czytają ikony integracji custom stąd). `scripts/probe.py`, `scripts/probe_chart.py` – diagnostyka portalu.
@@ -69,9 +74,20 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
   (`_zone_key` regexem na „A+ strefa 1”, `_parse_date` ms-epoch lub ISO); **jeśli sensory będą puste, podejrzewaj to miejsce**.
 - **Wykresy**: GET `/dp/resources/chart?mainChartDate=<ms północy Europe/Warsaw>&type=DAY|WEEK|MONTH|YEAR&meterPoint=<mpc>&mo=A+|A-|BP`
   (`A+` pobór, `A-` oddanie, `BP` bilans = A+ − A−). Odpowiedź: `response.mainChart[{tm(ms,str), zones[3] (null = strefa nieaktywna), est, cplt}]`, jednostka kWh;
-  DAY = godziny (dane do ok. 1 h wstecz, ostatnia godzina bywa niekompletna: `cplt:false`/`est:true`), MONTH = jedna pozycja z sumami stref.
+  DAY = godziny (dane do ok. 1 h wstecz, ostatnia godzina bywa niekompletna: `cplt:false`/`est:true`), MONTH = jedna pozycja na **dobę**,
+  YEAR = jedna pozycja na **miesiąc** (`tm` = północ 1. dnia w Europe/Warsaw; bieżący miesiąc też jest, częściowy, z `cplt:true`);
+  `mainChartDate` dla YEAR = 1 stycznia, dla MONTH = 1. dzień miesiąca. Dla `mo=BP` `zones` ma **jeden** element (suma, etykieta „Wartości”),
+  ujemny = nadwyżka oddana. Panel „Energia całkowita we wskazanym okresie” na stronie Wykresy to suma pozycji w zaznaczonym zakresie
+  (sprawdzone: −9853,349 kWh = suma miesięcy kwiecień–październik z `mo=BP`).
 - **`meterPoint` to `mpc`, NIE `meterPoints[].id`**: bierzemy z HTML `/dp/UserAccount.do` (odnośniki `EnergyIndex.do?mpc=<mpc>&ppe=<PPE>`), mapowanie po PPE.
   Zapas: `Meter.chart_ids` (kolejno `mpc`, `dev`, `id`, inne pola) – klient próbuje i zapamiętuje działające (400/404 = zły identyfikator).
+
+- **Rozliczenie net metering u Energi (faktury użytkownika dla G12W, okresy 2-miesięczne, instalacja powyżej 10 kW → współczynnik 0,7)**: godzinowe salda per strefa
+  (L1 = strefa 1, L2 = strefa 2); „suma godzinowych sald dodatnich/ujemnych” za cały okres (nie za dobę); magazyn = partie z datą wprowadzenia (koniec okresu);
+  nowa partia = 0,7 × suma ujemnych; pobór z magazynu tej samej strefy (najstarsza partia), a niedobór strefy bez zapasu jest pokrywany nadwyżką drugiej strefy
+  (faktura 00031: nadwyżka L1 656 pokryła niedobór L2 956, do zapłaty 300 kWh). Sumy godzinowych sald z faktur odtwarza się z godzinowych A+/A− portalu
+  (`scripts/probe_hours.py`), odczyty brutto na fakturze = portal. Ustawa o OZE art. 4: godzinowe bilansowanie ust. 2b, Wi ust. 3, ważność 12 mies. i FIFO ust. 5–5a,
+  kolejność stref ust. 5b–5e. Nie znaleziono żadnej warstwy dobowej.
 
 ## Co NIE działało (nie powtarzaj bez powodu)
 - Stare/zgadnięte API: POST `UserLogin.do` bez `_antixsrf`, pola `j_username/j_password` + `clientOS=ios` → strona błędu. `UserData.do?clientOS=ios` zwraca HTML, nie JSON.
@@ -90,7 +106,7 @@ node --check cards/energa-meter-card.js          # wymaga Node.js (CI to robi; l
 
 ## Stan i pomysły na dalej
 - Wg użytkownika wszystko działa (logowanie, sensory, import godzinowy, karta). Niezweryfikowane w prawdziwym HA: dokładne pola metadanych statystyk w nowych wersjach HA.
-- W toku (gałąź `dev`): sensory miesięczne – **tylko bilans** (`type=MONTH`, `mo=BP`; potrzebny HAR strony „Wykresy” z widokiem miesiąca),
-  weryfikacja modelu magazynu energii z danymi z portalu (potrzebny HAR strony, na której portal pokazuje stan magazynu/opusty), README po polsku
-  (lista sensorów), wydanie przez HACS (workflow już są). Później: README po angielsku.
-- Zrobione na `dev`: próg magazynu per licznik (70/80 %), domyślna nazwa urządzenia = numer licznika (`meterSN`).
+- W toku (gałąź `dev`): wydanie przez HACS (workflow już są), po wdrożeniu u użytkownika porównanie sensorów magazynu z kolejną fakturą.
+  Później: README po angielsku. Nieobsłużone: zmiana współczynnika w trakcie okresu, inne długości okresu niż wyrównane do stycznia, ust. 11 art. 4.
+- Zrobione na `dev`: model magazynu per strefa zgodny z fakturą, próg magazynu per licznik (70/80 %), domyślna nazwa urządzenia = numer licznika (`meterSN`), README po polsku z listą sensorów,
+  sensory „Bilans ten/poprzedni miesiąc”.

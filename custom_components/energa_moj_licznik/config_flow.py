@@ -18,11 +18,14 @@ from .const import (
     CONF_METERS,
     CONF_METERS_INFO,
     CONF_NAMES,
+    CONF_STORAGE_PERIOD,
     CONF_STORAGE_RATIO,
     CONF_STORAGE_RATIOS,
+    DEFAULT_STORAGE_PERIOD,
     DEFAULT_STORAGE_RATIO,
     DOMAIN,
     LEGACY_STORAGE_RATIO,
+    STORAGE_PERIOD_CHOICES,
     STORAGE_RATIO_CHOICES,
 )
 
@@ -146,12 +149,17 @@ class EnergaConfigFlow(ConfigFlow, domain=DOMAIN):
         prosumers = {_label(m): m for m in self._meters if m.id in self._selected and m.prosumer}
         if user_input is not None:
             ratios = {m.id: float(user_input[label]) for label, m in prosumers.items()}
-            return self._create_entry({CONF_STORAGE_RATIOS: ratios})
+            return self._create_entry(
+                {CONF_STORAGE_RATIOS: ratios, CONF_STORAGE_PERIOD: int(user_input[CONF_STORAGE_PERIOD])}
+            )
         default = _ratio_key(DEFAULT_STORAGE_RATIO)
         return self.async_show_form(
             step_id="storage",
             data_schema=vol.Schema(
-                {vol.Required(label, default=default): vol.In(_ratio_choices()) for label in prosumers}
+                {
+                    **{vol.Required(label, default=default): vol.In(_ratio_choices()) for label in prosumers},
+                    vol.Required(CONF_STORAGE_PERIOD, default=str(DEFAULT_STORAGE_PERIOD)): vol.In(_period_choices()),
+                }
             ),
         )
 
@@ -171,6 +179,11 @@ class EnergaConfigFlow(ConfigFlow, domain=DOMAIN):
 
 def _label(meter: Meter) -> str:
     return f"{meter.name} ({meter.ppe})"
+
+
+def _period_choices() -> dict[str, str]:
+    """Długość okresu rozliczeniowego (miesiące) - z umowy ze sprzedawcą (zwykle 2)."""
+    return {str(m): str(m) for m in STORAGE_PERIOD_CHOICES}
 
 
 def _ratio_key(ratio: float) -> str:
@@ -205,6 +218,7 @@ class EnergaOptionsFlow(OptionsFlow):
         legacy = float(entry.options.get(CONF_STORAGE_RATIO, LEGACY_STORAGE_RATIO))
         per_meter = entry.options.get(CONF_STORAGE_RATIOS, {})
         current_ratio = {mid: float(per_meter.get(mid, legacy)) for mid in prosumers}
+        period = int(entry.options.get(CONF_STORAGE_PERIOD, DEFAULT_STORAGE_PERIOD))
         ratio_labels = {f"{lbl}: zwrot z magazynu": mid for lbl, mid in labels.items() if mid in prosumers}
         if user_input is not None:
             names = {
@@ -213,7 +227,10 @@ class EnergaOptionsFlow(OptionsFlow):
                 if user_input.get(lbl, "").strip()
             }
             ratios = {mid: float(user_input[lbl]) for lbl, mid in ratio_labels.items()}
-            return self.async_create_entry(data={CONF_NAMES: names, CONF_STORAGE_RATIOS: ratios})
+            options = {CONF_NAMES: names, CONF_STORAGE_RATIOS: ratios}
+            if ratio_labels:
+                options[CONF_STORAGE_PERIOD] = int(user_input[CONF_STORAGE_PERIOD])
+            return self.async_create_entry(data=options)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -228,6 +245,13 @@ class EnergaOptionsFlow(OptionsFlow):
                         )
                         for lbl, mid in ratio_labels.items()
                     },
+                    **(
+                        {
+                            vol.Required(CONF_STORAGE_PERIOD, default=str(period)): vol.In(_period_choices()),
+                        }
+                        if ratio_labels
+                        else {}
+                    ),
                 }
             ),
         )

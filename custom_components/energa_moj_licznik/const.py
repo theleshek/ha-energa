@@ -11,6 +11,9 @@ CONF_STORAGE_RATIOS = "storage_ratios"  # {id licznika: % oddanej energii zwraca
 # Net metering: zwrot 80 % (instalacje do 10 kW) albo 70 % (powyżej 10 kW).
 STORAGE_RATIO_CHOICES = (70.0, 80.0)
 DEFAULT_STORAGE_RATIO = 80.0  # domyślnie dla nowych liczników
+CONF_STORAGE_PERIOD = "storage_period"  # długość okresu rozliczeniowego w miesiącach (opcje)
+STORAGE_PERIOD_CHOICES = (1, 2, 3, 6)
+DEFAULT_STORAGE_PERIOD = 2  # okresy liczone od stycznia: sty-lut, mar-kwi, ...
 LEGACY_STORAGE_RATIO = 70.0  # wartość z czasów jednej, wspólnej opcji - dla wpisów sprzed per-licznikowych progów
 
 BASE_URL = "https://mojlicznik.energa-operator.pl"

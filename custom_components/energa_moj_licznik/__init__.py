@@ -17,7 +17,9 @@ from .const import (
     CONF_METERS,
     CONF_NAMES,
     CONF_STORAGE_RATIO,
+    CONF_STORAGE_PERIOD,
     CONF_STORAGE_RATIOS,
+    DEFAULT_STORAGE_PERIOD,
     DOMAIN,
     LEGACY_STORAGE_RATIO,
 )
@@ -59,7 +61,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     legacy = float(entry.options.get(CONF_STORAGE_RATIO, LEGACY_STORAGE_RATIO))
     per_meter = entry.options.get(CONF_STORAGE_RATIOS, {})
     ratios = {m.id: float(per_meter.get(m.id, legacy)) for m in meters}
-    coordinator = EnergaCoordinator(hass, client, meters, entry.entry_id, ratios)
+    period = int(entry.options.get(CONF_STORAGE_PERIOD, DEFAULT_STORAGE_PERIOD))
+    coordinator = EnergaCoordinator(hass, client, meters, entry.entry_id, ratios, period)
     await coordinator.async_load_storages()
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

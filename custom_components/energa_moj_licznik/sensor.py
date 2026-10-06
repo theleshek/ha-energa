@@ -9,11 +9,14 @@ from homeassistant.components.sensor import (
 import voluptuous as vol
 
 from homeassistant.const import UnitOfEnergy
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, ZONES
+from .storage import ZONES as STORAGE_ZONES
 
 NAMES = {
     "A+1": "Pobór strefa 1",
@@ -35,6 +38,11 @@ DAILY_NAMES = {
     ("A-", "yesterday"): "Oddanie wczoraj",
     ("BAL", "today"): "Bilans dziś",
     ("BAL", "yesterday"): "Bilans wczoraj",
+}
+
+MONTHLY_NAMES = {
+    "this": "Bilans ten miesiąc",
+    "previous": "Bilans poprzedni miesiąc",
 }
 
 
@@ -59,13 +67,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 continue
             entities.append(EnergaDailySensor(coordinator, meter, direction, day))
     entities += [
-        EnergaStorageSensor(coordinator, meter) for meter in coordinator.meters if meter.id in coordinator.storages
+        EnergaMonthlySensor(coordinator, meter, period)
+        for meter in coordinator.meters
+        if meter.prosumer
+        for period in MONTHLY_NAMES
+    ]
+    entities += [
+        EnergaStorageSensor(coordinator, meter, zone)
+        for meter in coordinator.meters
+        if meter.id in coordinator.storages
+        for zone in (*STORAGE_ZONES, None)
     ]
     async_add_entities(entities)
 
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
-        "set_storage", {vol.Required("value"): vol.All(vol.Coerce(float), vol.Range(min=0))}, "async_set_storage"
+        "set_storage",
+        {
+            vol.Required("value"): vol.All(vol.Coerce(float), vol.Range(min=0)),
+            vol.Optional("date"): cv.date,
+            vol.Optional("append", default=False): cv.boolean,
+        },
+        "async_set_storage",
     )
     platform.async_register_entity_service("reset_storage", {}, "async_reset_storage")
 
@@ -195,12 +218,10 @@ class EnergaDailySensor(CoordinatorEntity, SensorEntity):
         return attrs
 
 
-class EnergaStorageSensor(CoordinatorEntity, SensorEntity):
-    """Stan magazynu energii u operatora (system opustów).
+class EnergaMonthlySensor(CoordinatorEntity, SensorEntity):
+    """Bilans miesiąca (pobór - oddanie) z wykresu rocznego portalu (mo=BP).
 
-    Oddanie zasila magazyn w części (opcja "storage_ratios", per licznik: 70 % lub 80 %), pobór go
-    opróżnia. Wartość liczona godzinowo z danych portalu i zapamiętywana; ustaw ją usługą
-    set_storage (albo encją number) przy pierwszym uruchomieniu lub po rozliczeniu z operatorem.
+    Wartość ujemna = więcej oddano niż pobrano. Bieżący miesiąc zmienia się z dnia na dzień.
     Bez state_class: nie dodawaj do panelu Energia.
     """
 
@@ -208,37 +229,98 @@ class EnergaStorageSensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 3
     _attr_has_entity_name = True
-    _attr_name = "Magazyn energii"
-    _attr_icon = "mdi:battery-charging-medium"
 
-    def __init__(self, coordinator, meter) -> None:
+    def __init__(self, coordinator, meter, period: str) -> None:
         super().__init__(coordinator)
         self._meter = meter
-        self._store = coordinator.storages[meter.id]
-        self._attr_unique_id = f"{meter.ppe}_storage"
+        self._period = period  # 'this' albo 'previous'
+        self._attr_unique_id = f"{meter.ppe}_monthly_balance_{period}"
+        self._attr_name = MONTHLY_NAMES[period]
         self._attr_device_info = _device_info(meter)
+
+    def _balance(self):
+        data = self.coordinator.data.get(self._meter.id)
+        return data.monthly.get(self._period) if data else None
 
     @property
     def native_value(self):
-        return round(self._store.value, 3)
+        balance = self._balance()
+        return balance.value if balance else None
 
     @property
     def extra_state_attributes(self):
-        s = self._store
+        balance = self._balance()
+        if not balance:
+            return {}
+        return {"month": balance.month.strftime("%Y-%m"), "complete": balance.complete}
+
+
+class EnergaStorageSensor(CoordinatorEntity, SensorEntity):
+    """Magazyn energii u operatora (net metering) w strefie 1, strefie 2 albo razem (zone=None).
+
+    Wartość to stan, jaki wyniknąłby z rozliczenia bieżącego okresu rozliczeniowego "teraz"
+    (godzinowe salda per strefa, współczynnik 0,7/0,8 na nadwyżkę, pobór najpierw z tej samej strefy,
+    partie FIFO ważne 12 miesięcy) - tak jak liczy Energa na fakturze. Stan początkowy ustaw z faktury
+    usługą set_storage lub encją number. Bez state_class: nie dodawaj do panelu Energia.
+    """
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 3
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:battery-charging-medium"
+
+    def __init__(self, coordinator, meter, zone: int | None) -> None:
+        super().__init__(coordinator)
+        self._meter = meter
+        self._zone = zone  # 1, 2 albo None = razem
+        self._store = coordinator.storages[meter.id]
+        self._attr_unique_id = f"{meter.ppe}_storage_total" if zone is None else f"{meter.ppe}_storage_zone_{zone}"
+        self._attr_name = "Magazyn energii razem" if zone is None else f"Magazyn energii strefa {zone}"
+        self._attr_device_info = _device_info(meter)
+
+    def _zones(self):
+        return STORAGE_ZONES if self._zone is None else (self._zone,)
+
+    @property
+    def native_value(self):
+        lots, _ = self._store.projection()
+        return round(sum(lot.amount for z in self._zones() for lot in lots[z]), 3)
+
+    @property
+    def extra_state_attributes(self):
+        store, state = self._store, self._store.state
+        lots, billed = store.projection()
+        start, end = store.period()
         attrs = {
-            "ratio_percent": round(s.ratio * 100, 1),
-            "credited_since_set": s.credited,
-            "drawn_since_set": s.drawn,
+            "lots": [
+                {"zone": z, "date": lot.day.isoformat(), "kwh": round(lot.amount, 3)}
+                for z in self._zones()
+                for lot in lots[z]
+            ],
+            "settled_kwh": round(sum(lot.amount for z in self._zones() for lot in state.lots[z]), 3),
+            "to_pay_kwh": round(sum(billed[z] for z in self._zones()), 3),
+            "positive_balance_kwh": round(sum(state.pos[z] for z in self._zones()), 3),
+            "negative_balance_kwh": round(sum(state.neg[z] for z in self._zones()), 3),
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "period_months": store.months,
+            "ratio_percent": round(store.ratio * 100, 1),
         }
-        if s.last_hour:
-            attrs["calculated_until"] = s.last_hour.isoformat()
-        if s.changed_at:
-            attrs["last_set"] = s.changed_at.isoformat()
+        if state.last_hour:
+            attrs["calculated_until"] = state.last_hour.isoformat()
+        if store.gap_from:
+            attrs["data_gap_from"] = store.gap_from.isoformat()
+        if store.changed_at:
+            attrs["last_set"] = store.changed_at.isoformat()
         return attrs
 
-    async def async_set_storage(self, value: float) -> None:
-        await self._store.async_set(value)
+    async def async_set_storage(self, value: float, date=None, append: bool = False) -> None:
+        if self._zone is None:
+            raise ServiceValidationError("Stan ustawia się osobno dla strefy 1 i strefy 2 (wybierz encję strefy).")
+        await self._store.async_set_zone(self._zone, value, date, append)
         self.coordinator.async_update_listeners()
 
     async def async_reset_storage(self) -> None:
-        await self.async_set_storage(0.0)
+        await self._store.async_reset(self._zone)
+        self.coordinator.async_update_listeners()

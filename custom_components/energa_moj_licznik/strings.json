@@ -21,7 +21,10 @@
       },
       "storage": {
         "title": "Magazyn energii (net metering)",
-        "description": "Jaka część oddanej energii wraca z magazynu u operatora: 80 % (instalacje do 10 kW) albo 70 % (powyżej 10 kW). Wartość można zmienić później w opcjach."
+        "description": "Jaka część oddanej energii wraca z magazynu u operatora: 80 % (instalacje do 10 kW) albo 70 % (powyżej 10 kW), oraz długość okresu rozliczeniowego w miesiącach z umowy (zwykle 2). Wartości można zmienić później w opcjach.",
+        "data": {
+          "storage_period": "Okres rozliczeniowy (miesiące)"
+        }
       },
       "reauth_confirm": {
         "title": "Ponowne uwierzytelnienie",
@@ -46,7 +49,10 @@
     "step": {
       "init": {
         "title": "Liczniki",
-        "description": "Zmień nazwy własne liczników i próg zwrotu z magazynu energii (80 % dla instalacji do 10 kW, 70 % powyżej). Integracja zostanie przeładowana po zapisaniu."
+        "description": "Zmień nazwy własne liczników i próg zwrotu z magazynu energii (80 % dla instalacji do 10 kW, 70 % powyżej) oraz długość okresu rozliczeniowego. Integracja zostanie przeładowana po zapisaniu.",
+        "data": {
+          "storage_period": "Okres rozliczeniowy (miesiące)"
+        }
       }
     }
   }

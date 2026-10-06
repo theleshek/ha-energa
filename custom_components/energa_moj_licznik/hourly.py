@@ -24,6 +24,23 @@ class DailyUsage:
     hours: int
 
 
+@dataclass
+class MonthlyBalance:
+    """Bilans miesiąca z wykresu rocznego (BP = A+ - A-); ujemny = nadwyżka oddana."""
+
+    month: date  # pierwszy dzień miesiąca
+    value: float
+    complete: bool
+
+
+def monthly_balance(points: list[ChartPoint], month: date, tz: tzinfo) -> MonthlyBalance | None:
+    """Pozycja wykresu rocznego odpowiadająca miesiącowi ``month`` (pierwszy dzień) albo None."""
+    for p in points:
+        if p.start.astimezone(tz).date() == month:
+            return MonthlyBalance(month=month, value=round(point_value(p, None), 5), complete=p.complete)
+    return None
+
+
 def point_value(point: ChartPoint, zone: int | None) -> float:
     """Wartość godziny dla strefy (1..3) albo suma wszystkich stref, gdy zone=None."""
     if zone is None:
@@ -72,62 +89,3 @@ def daily_usage(points: list[ChartPoint], day: date, tz: tzinfo) -> DailyUsage:
             zones[z] += point_value(p, z)
     zones = {z: round(v, 5) for z, v in zones.items() if v or z <= 2}
     return DailyUsage(day=day, total=round(sum(zones.values()), 5), zones=zones, hours=hours)
-
-
-def storage_steps(
-    plus: list[ChartPoint],
-    minus: list[ChartPoint],
-    after: datetime | None,
-    value: float,
-    ratio: float,
-    tz: tzinfo = timezone.utc,
-) -> tuple[float, datetime | None, float, float]:
-    """Zasymuluj magazyn energii u operatora, doba po dobie (doba lokalna ``tz``).
-
-    1. Dla każdej godziny liczymy bilans A+ - A- (dodatni = niedobór, ujemny = nadwyżka).
-    2. Bilanse godzinowe sumujemy w dobie. Gdy suma jest ujemna (powstała energia oddana),
-       trafia do magazynu pomniejszona o współczynnik ``ratio`` (np. 0.7); gdy dodatnia,
-       jest pobierana z magazynu (nie więcej niż w nim jest).
-
-    Doba jest rozliczana dopiero, gdy jest kompletna (wszystkie jej godziny kompletne w obu
-    kierunkach) - współczynnik nie jest liniowy względem doby. Godziny ``<= after`` pomijamy.
-    Zwraca (nowy stan, ostatnia godzina rozliczonej doby, dopisane do magazynu, pobrane z magazynu).
-    """
-    p = {pt.start: pt for pt in plus if pt.complete}
-    m = {pt.start: pt for pt in minus if pt.complete}
-    days: dict[date, list[tuple[datetime, float]]] = {}
-    for hour in sorted(set(p) & set(m)):
-        if after is not None and hour <= after:
-            continue
-        net = point_value(p[hour], None) - point_value(m[hour], None)
-        days.setdefault(hour.astimezone(tz).date(), []).append((hour, net))
-
-    last = after
-    credited = drawn = 0.0
-    for day in sorted(days):
-        hours = days[day]
-        start = datetime.combine(day, time.min, tzinfo=tz).astimezone(timezone.utc)
-        end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
-        if after is not None:
-            start = max(start, after + timedelta(hours=1))  # po wcześniejszym stanie częściowej doby
-        expected = round((end - start).total_seconds() / 3600)  # 24, w dniach zmiany czasu 23/25
-        if len(hours) != expected or (last is not None and hours[0][0] - last > timedelta(hours=1)):
-            break  # doba niekompletna albo luka - nie rozliczamy
-        net = sum(n for _, n in hours)
-        if net < 0:
-            added = ratio * -net
-            value += added
-            credited += added
-        else:
-            taken = min(net, value)
-            value -= taken
-            drawn += taken
-        last = hours[-1][0]
-    return round(value, 5), last, round(credited, 5), round(drawn, 5)
-
-
-def latest_common_hour(
-    plus: list[ChartPoint], minus: list[ChartPoint], tz: tzinfo = timezone.utc
-) -> datetime | None:
-    """Ostatnia godzina ostatniej doby kompletnej w obu kierunkach."""
-    return storage_steps(plus, minus, None, 0.0, 0.0, tz)[1]
