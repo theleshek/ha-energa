@@ -9,8 +9,8 @@ HAOS (Core 2026.9.x). Repozytorium jest **publiczne** (`theleshek/ha-energa`).
 Gałęzie: praca na `dev`, `main` scalamy rzadko (wydania, przez PR). Commit/push/PR tylko na wyraźną prośbę; commity z trailerami z system-reminder.
 
 ## Środowisko pracy (ważne)
-- Sesja działa **lokalnie na Windowsie użytkownika** (repo w `C:/Users/Leszek/OneDrive/Dokumenty/GitHub/ha-energa`, folder synchronizowany
-  przez OneDrive – bez dużych plików tymczasowych). Można ją wywoływać zdalnie z aplikacji Claude na Androidzie (Remote Control).
+- Sesja działa **lokalnie na Windowsie użytkownika** (repo w `C:/Users/Leszek/GitHub/ha-energa`, **poza OneDrive** – synchronizacja OneDrive
+  blokowała `.git/objects`; nie przenoś repo z powrotem). Można ją wywoływać zdalnie z aplikacji Claude na Androidzie (Remote Control).
   Nadal **nie mamy dostępu do portalu ML ani do HA użytkownika**: rzeczywiste odpowiedzi portalu dostajemy tylko od użytkownika
   (HAR z Chrome w `har/` – ignorowany przez git – albo wyniki `scripts/probe*.py`: `py scripts/probe.py`, zmienne `$env:ENERGA_USER`,
   `$env:ENERGA_PASS`). Po jego stronie: kopiuje `custom_components/energa_moj_licznik` do `/config/custom_components/`, restartuje HA, wkleja logi.
@@ -20,8 +20,8 @@ Gałęzie: praca na `dev`, `main` scalamy rzadko (wydania, przez PR). Commit/pus
   wewnętrzne identyfikatory portalu `id`/`mpc`/`dev`, kod pocztowy, numery faktur/klienta). W testach i dokumentacji używaj wartości
   fikcyjnych (np. PPE `590000000000000001`, `mpc=100001`, `id=100002`). `probe_output/`, `har/` i `*.har` są w `.gitignore`;
   skrypty probe maskują dane, ale nie wszystko.
-- Użytkownik pracuje w PowerShell 5.1 (brak `&&`; polecenia w osobnych liniach). Folder jest w OneDrive – przy błędach typu `index.lock` /
-  „unable to unlink” przenieś repo poza OneDrive.
+- Użytkownik pracuje w PowerShell 5.1 (brak `&&`; polecenia w osobnych liniach). `gh` (GitHub CLI) jest w `C:\Program Files\GitHub CLI\gh.exe`
+  (może nie być w PATH sesji). Pliki z `.gitignore` (`har/`, `probe_output/`) są tylko lokalne – nie ma ich w chmurze.
 - Nie wymyślaj struktur odpowiedzi portalu – najpierw dane od użytkownika, parsowanie pisz tolerancyjnie.
 
 ## Komendy
