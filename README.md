@@ -49,21 +49,43 @@ Odczyty zmieniają się raz na dobę (portal podaje stan z północy). Atrybuty:
 Bez `state_class` (do wyświetlania i automatyzacji, nie do panelu Energia). Atrybuty: `date`, `complete_hours`,
 `zone_1`, `zone_2` (rozbicie na strefy).
 
+### Bilans miesięczny
+| Encja | Dla kogo | Skąd |
+|---|---|---|
+| Bilans ten miesiąc, Bilans poprzedni miesiąc | prosumenci | wykres roczny portalu (`mo=BP`, pobór − oddanie); ujemny = więcej oddano niż pobrano |
+
+Bez `state_class`. Atrybuty: `month` (RRRR-MM), `complete`. Bieżący miesiąc zmienia się z dnia na dzień.
+
 ### Magazyn energii u operatora (prosumenci)
 | Encja | Rodzaj | Opis |
 |---|---|---|
-| Magazyn energii | sensor | **wyliczany model** stanu magazynu (opusty), patrz niżej |
-| Ustaw magazyn energii | number | ręczne ustawienie stanu (kWh) |
+| Magazyn energii strefa 1, Magazyn energii strefa 2 | sensor | **wyliczany model** stanu magazynu (opusty) w strefie |
+| Magazyn energii razem | sensor | suma obu stref |
+| Ustaw magazyn energii strefa 1, strefa 2 | number | ręczne ustawienie stanu strefy (kWh) |
 
-Usługi: `energa_moj_licznik.set_storage` (`value` w kWh) i `energa_moj_licznik.reset_storage` (zeruje stan).
+Model odtwarza rozliczenie Energi z faktury (sprawdzony na fakturach za 2026 r., zgodność co do pojedynczych kWh):
+1. Bilans liczony jest **w każdej godzinie osobno dla każdej strefy** (pobór − oddanie, z danych godzinowych portalu).
+2. W okresie rozliczeniowym (domyślnie 2 miesiące: sty–lut, mar–kwi, …; wybór w opcjach) sumowane są **osobno** godziny z nadwyżką
+   i godziny z niedoborem – bez salda dobowego. Nadwyżka dopisuje się do magazynu pomnożona przez współczynnik
+   (80 % do 10 kW, 70 % powyżej) jako partia z datą końca okresu; niedobór pomniejsza magazyn w całości.
+3. Pobór jest pokrywany najpierw z tej samej strefy (od najstarszej partii, FIFO), a potem z nadwyżek drugiej strefy;
+   partie wygasają po 12 miesiącach. Czego zabraknie, trzeba kupić (atrybut `to_pay_kwh`).
 
-Model liczy stan doba po dobie (strefa czasowa Europe/Warsaw): bilans każdej godziny (pobór − oddanie), potem suma bilansów w dobie.
-Nadwyżka oddana w dobie trafia do magazynu pomniejszona o próg zwrotu (80 % lub 70 %); niedobór jest pobierany z magazynu
-(nie poniżej 0). Doba jest rozliczana po zakończeniu – stan jest na koniec ostatniej rozliczonej doby (atrybut `calculated_until`).
-Pozostałe atrybuty: `ratio_percent`, `credited_since_set`, `drawn_since_set`, `last_set`.
-Liczenie startuje od momentu dodania integracji (bez danych historycznych), więc **przy pierwszym użyciu ustaw stan początkowy**
-(encja „Ustaw magazyn energii” albo usługa `set_storage`). To model, a nie odczyt z portalu – po rozliczeniu z operatorem
-warto go skorygować. Model zakłada jedną pulę dla wszystkich stref taryfy.
+Wartość sensora to stan, jaki wyszedłby z rozliczenia bieżącego okresu „teraz” (podgląd w trakcie okresu). Atrybuty:
+`lots` (partie: strefa, data wprowadzenia, kWh), `settled_kwh` (po ostatnim zamkniętym okresie), `to_pay_kwh`,
+`positive_balance_kwh` / `negative_balance_kwh` (sumy godzinowych sald bieżącego okresu, przed współczynnikiem),
+`period_start`, `period_end`, `period_months`, `ratio_percent`, `calculated_until`, `last_set`, a przy braku danych `data_gap_from`.
+Przy pierwszym starcie integracja dociąga dane godzinowe od początku bieżącego okresu rozliczeniowego (do kilkudziesięciu zapytań).
+
+**Stan początkowy ustaw z faktury** („Magazyn energii po rozliczeniu”, partie z datami wprowadzenia), osobno dla każdej strefy:
+usługa `energa_moj_licznik.set_storage` na encji strefy (`value` w kWh, opcjonalnie `date` = data wprowadzenia z faktury
+i `append: true`, by dodać kolejną partię zamiast zastąpić stan) albo encja „Ustaw magazyn energii strefa N” (jedna partia
+z końca ostatniego okresu). `energa_moj_licznik.reset_storage` zeruje strefę (na encji „razem” – obie). Przykład z faktury:
+strefa 1: partia 1000 kWh z datą 30.06.2026, potem druga partia 500 kWh z datą 31.08.2026 z `append: true`.
+
+To model, nie odczyt z portalu – po każdej fakturze warto porównać wynik i skorygować. Sensory nie mają `state_class`,
+nie dodawaj ich do panelu Energia. Gdy portal nie ma danych godzinowych za część okresu, liczenie wstrzymuje się
+(atrybut `data_gap_from`) – ustaw wtedy stan z faktury.
 
 ### Statystyki godzinowe (panel Energia)
 Integracja importuje godzinowe statystyki zewnętrzne do rejestratora (`recorder`):
@@ -86,7 +108,7 @@ Skopiuj plik do `/config/www/energa-meter/` i dodaj zasób Lovelace `/local/ener
 Przy aktualizacji pliku dopisz do adresu zasobu nową wartość `?v=…`, bo przeglądarka mocno go buforuje.
 
 ## Diagnostyka
-Skrypty `scripts/probe.py` i `scripts/probe_chart.py` odpytują portal i zapisują zanonimizowane odpowiedzi do `probe_output/`:
+Skrypty `scripts/probe.py` i `scripts/probe_chart.py` odpytują portal i zapisują zanonimizowane odpowiedzi do `probe_output/`; `scripts/probe_year.py` (miesięczne A+/A− per strefa) i `scripts/probe_hours.py` (godzinowe A+/A−, do porównania z fakturą) zapisują tylko liczby:
 ```
 pip install aiohttp
 $env:ENERGA_USER="login"; $env:ENERGA_PASS="haslo"; py scripts/probe.py

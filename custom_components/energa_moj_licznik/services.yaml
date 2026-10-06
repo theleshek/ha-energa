@@ -1,6 +1,8 @@
 set_storage:
   name: Ustaw stan magazynu energii
-  description: Ustawia stan magazynu energii u operatora (kWh), np. przy pierwszym uruchomieniu.
+  description: >-
+    Ustawia magazyn energii u operatora w wybranej strefie (encja "Magazyn energii strefa 1" lub "strefa 2"),
+    np. według faktury. Stan to partia z datą wprowadzenia (ważna 12 miesięcy).
   target:
     entity:
       integration: energa_moj_licznik
@@ -8,9 +10,9 @@ set_storage:
   fields:
     value:
       name: Stan
-      description: Stan magazynu w kWh (liczony na koniec ostatniej przetworzonej godziny).
+      description: Ilość energii w partii w kWh.
       required: true
-      example: 123.4
+      example: 1136
       selector:
         number:
           min: 0
@@ -18,9 +20,22 @@ set_storage:
           step: 0.001
           unit_of_measurement: kWh
           mode: box
+    date:
+      name: Data wprowadzenia
+      description: Data wprowadzenia partii z faktury (koniec okresu rozliczeniowego). Domyślnie koniec ostatniego okresu.
+      required: false
+      selector:
+        date:
+    append:
+      name: Dodaj partię
+      description: Dodaj partię do istniejących zamiast zastąpić stan strefy (przydatne przy kilku partiach z faktury).
+      required: false
+      default: false
+      selector:
+        boolean:
 reset_storage:
   name: Zeruj magazyn energii
-  description: Zeruje stan magazynu energii u operatora.
+  description: Zeruje magazyn energii u operatora w strefie (dla encji "razem" w obu strefach).
   target:
     entity:
       integration: energa_moj_licznik

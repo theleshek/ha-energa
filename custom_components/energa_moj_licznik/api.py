@@ -239,13 +239,21 @@ class EnergaClient:
 
     async def async_get_day_chart(self, meter: Meter, mo: str, day: date) -> list[ChartPoint]:
         """Pobierz godzinowy wykres doby. mo: 'A+' (pobór) lub 'A-' (oddanie)."""
+        return await self.async_get_chart(meter, mo, "DAY", day)
+
+    async def async_get_year_chart(self, meter: Meter, mo: str, year: int) -> list[ChartPoint]:
+        """Pobierz wykres roku: jedna pozycja na miesiąc. mo: 'A+', 'A-' albo 'BP' (bilans A+ - A-)."""
+        return await self.async_get_chart(meter, mo, "YEAR", date(year, 1, 1))
+
+    async def async_get_chart(self, meter: Meter, mo: str, chart_type: str, day: date) -> list[ChartPoint]:
+        """Wykres portalu (type: DAY, MONTH, YEAR); `day` to początek okresu (dla YEAR 1 stycznia)."""
         cached = self._chart_ids.get(meter.id)
         if cached:
-            return await self._day_chart(cached, meter, mo, day)
+            return await self._chart(cached, meter, mo, chart_type, day)
         tried: list[str] = []
         for field_name, value in (meter.chart_ids or {"id": meter.id}).items():
             try:
-                points = await self._day_chart(value, meter, mo, day)
+                points = await self._chart(value, meter, mo, chart_type, day)
             except EnergaHttpError as err:
                 if err.status in (400, 404):  # zły identyfikator: próbujemy następne pole
                     tried.append(field_name)
@@ -259,20 +267,22 @@ class EnergaClient:
             f"(próbowano pól: {', '.join(tried) or 'brak'})"
         )
 
-    async def _day_chart(self, meter_point: str, meter: Meter, mo: str, day: date) -> list[ChartPoint]:
+    async def _chart(
+        self, meter_point: str, meter: Meter, mo: str, chart_type: str, day: date
+    ) -> list[ChartPoint]:
         midnight = datetime.combine(day, time.min, tzinfo=PORTAL_TZ)
         data = await self._request(
             "GET",
             "/dp/resources/chart",
             params={
                 "mainChartDate": int(midnight.timestamp() * 1000),
-                "type": "DAY",
+                "type": chart_type,
                 "meterPoint": meter_point,
                 "mo": mo,
             },
         )
         points = self._parse_chart(data)
-        _LOGGER.debug("Wykres %s %s dla %s: %d godzin", mo, day, meter.name, len(points))
+        _LOGGER.debug("Wykres %s %s %s dla %s: %d pozycji", chart_type, mo, day, meter.name, len(points))
         return points
 
     @staticmethod
